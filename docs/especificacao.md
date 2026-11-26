@@ -62,12 +62,13 @@ f e c 0 1 d 5 9 3 0   a e c 0 8 3 d 3 1 1
 | 15 | Formato | O mesmo do exemplo do enunciado: ACERTO mostra `Pontos`, ERRO mostra `Vidas`. |
 
 ```
-Rodada 05 | Alvo: C | Resposta: C | ACERTO | Pontos: 50
-Rodada 06 | Alvo: 7 | Resposta: 3 | ERRO   | Vidas: 2
-=== FIM DE JOGO === Pontuacao final: 80 | Sequencia: 4A9bC73
+Rodada 5 | Alvo: C | Resposta: C | ACERTO | Pontos: 50
+Rodada 6 | Alvo: 7 | Resposta: 3 | ERRO   | Vidas: 2
+=== FIM DE JOGO === Pontuacao final: 80 | Sequencia: 4A9BC73
 ```
 
-| 16 | Números | Rodada e pontos em **decimal** (reaproveita a conversão da tela `GO  XXXX`). |
+| 16 | Números | Rodada, pontos e vidas em **decimal, sem zeros à esquerda** (reaproveita a conversão da tela `GO  XXXX`, que está em `utils.s`). |
+| 17 | Letras | Dígitos hex na UART em **maiúsculas** (`0123456789ABCDEF`), inclusive b e d. No display continuam `b` e `d` minúsculos. |
 
 ### Técnica de acesso aos periféricos
 
@@ -265,6 +266,7 @@ Observações:
 | `timer.s` | iniciar, parar, retomar, reprogramar período, acelerar |
 | `uart.s` | enviar caractere e string, número decimal com N dígitos, linha da rodada, linha final e mensagem de espera |
 | `targets.s` | a lista de 100 alvos (constante) + rotina que devolve `lista[i mod 100]` |
+| `utils.s` *(nome a confirmar)* | rotinas usadas por mais de um módulo: conversão para decimal (tela GO e UART) |
 
 ### Convenção de chamada
 
@@ -286,9 +288,42 @@ A do Nios II: argumentos em r4–r7, retorno em r2 (e r3), r8–r15 livres para 
 
 - `alvo` e `proximo` **não** são guardados: são calculados na hora como `lista[indice]` e `lista[indice + 1]` pela rotina de `targets.s`.
 - O **estado** da FSM não ocupa registrador: cada estado é um trecho do laço principal com rótulo próprio, e mudar de estado é desviar para ele.
-- Os flags (`FLAG_KEY1`, `FLAG_KEY2`, `FLAG_TICK`) ficam na memória porque a ISR escreve neles a qualquer momento: ela não pode mexer em um registrador que o laço principal esteja usando.
+- Os flags (`FLAG_KEY1`, `FLAG_KEY2`, `FLAG_TICK`) ficam na memória, declarados em `main.s` com `.global` (a ISR liga, o laço principal consome e desliga), porque a ISR escreve neles a qualquer momento: ela não pode mexer em um registrador que o laço principal esteja usando.
 - Os outros arquivos **não** leem r16–r21 diretamente: recebem o que precisam como argumento (ex.: os pontos chegam em r4 para a rotina da UART). Isso deixa as interfaces explícitas.
 - Regras que valem para todos: toda rotina que usar r16–r23 salva e restaura; a ISR só usa `et` e registradores que ela mesma salva e restaura.
+
+### Interfaces das sub-rotinas (6.1.5)
+
+Todas seguem a convenção acima. "—" = sem argumento ou sem retorno.
+
+| Arquivo | Rotina | Entrada | Saída |
+|---|---|---|---|
+| `display.s` | `set_hex_digit` | r4 = display 0–7, r5 = dígito 0–15 ou `0xFF` (apaga) | — |
+| | `set_hex_raw` | r4 = display 0–7, r5 = padrão de 7 segmentos (letras) | — |
+| | `clear_hex` | — | — |
+| | `show_play` | — | — |
+| | `show_game_over` | r4 = pontos | — |
+| `leds.s` | `set_ledr_unary` | r4 = n (0–15) | — |
+| | `set_ledg_lives` | r4 = vidas | — |
+| | `clear_leds` | — | — |
+| `timer.s` | `timer_start` | r4 = período em ciclos | — |
+| | `timer_stop` | — | — |
+| | `timer_resume` | — | — |
+| | `next_period` | r4 = período | r2 = período − período/20 |
+| `interrupts.s` | `interrupts_init` | — | — (ITO do timer, máscara dos KEYs, `ienable`, PIE) |
+| `targets.s` | `get_target` | r4 = índice | r2 = `lista[índice mod 100]` |
+| `utils.s` | `to_bcd` | r4 = valor (0–99.999.999) | r2 = o valor em BCD compactado: 8 dígitos decimais, um por nibble |
+| `uart.s` | `uart_putc` | r4 = caractere | — |
+| | `uart_puts` | r4 = endereço da string terminada em 0 | — |
+| | `uart_put_dec` | r4 = valor | — (sem zeros à esquerda) |
+| | `uart_put_hex_digit` | r4 = 0–15 | — (maiúscula) |
+| | `uart_print_wait` | — | — |
+| | `uart_print_round` | r4 = rodada, r5 = alvo, r6 = resposta, r7 = pontos (acerto) ou vidas (erro) | — |
+| | `uart_print_end` | r4 = pontos, r5 = nº de rodadas jogadas | — |
+
+- `uart_print_round` decide ACERTO/ERRO comparando r5 com r6, para caber nos 4 registradores de argumento.
+- `uart_print_end` monta a "Sequencia" chamando `get_target` de 0 até rodadas − 1.
+- `to_bcd` serve aos dois usos: `show_game_over` pega os 4 nibbles de baixo (com zeros, `GO  0007`), e `uart_put_dec` pula os nibbles zero da esquerda.
 
 ---
 
