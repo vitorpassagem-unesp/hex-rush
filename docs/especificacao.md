@@ -262,7 +262,7 @@ Observações:
 |---|---|
 | `constants.s` | todos os `.equ`: endereços, período inicial, vidas, deslocamento da aceleração (4), códigos de letras. Incluído pelos outros arquivos com `.include` |
 | `main.s` | `_start`, inicialização e laço principal com a FSM |
-| `interrupts.s` | RTI em `0x20` e ISRs do timer e dos KEYs (só levantam flags) |
+| `interrupts.s` | RTI em `0x20` (seção `.exceptions`, que o Monitor Program posiciona no endereço de exceção independentemente da ordem dos arquivos) e ISRs do timer e dos KEYs (só levantam flags). Qualquer exceção que não seja interrupção acende todos os LEDR e trava |
 | `display.s` | módulo criado a partir do teste atual (`set_hex_digit`), + apagar tudo, tela `PLAY` e tela `GO  XXXX`. O teste isolado vai para `tests/` |
 | `leds.s` | LEDR em unário e LEDG com as vidas |
 | `timer.s` | iniciar, parar, retomar, reprogramar período, acelerar |
