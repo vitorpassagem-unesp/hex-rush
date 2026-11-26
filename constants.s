@@ -59,7 +59,9 @@
  * Parametros do jogo (ajustar aqui, e so aqui)
  * -------------------------------------------------------------------------- */
 .equ PERIODO_INICIAL,   50000000     /* 1 s por passo a 50 MHz */
-.equ DIVISOR_ACEL,      20           /* p = p - p/20 -> reduz 5% por acerto */
+/* p = p - (p >> ACEL_SHIFT) -> reduz 6,25% por acerto. O processador nao tem
+ * div nem mul, entao o divisor precisa ser potencia de 2 (16 = 2^4). */
+.equ ACEL_SHIFT,        4
 .equ VIDAS_INICIAIS,    3
 .equ POS_INICIAL,       7            /* alvo nasce em HEX7 */
 .equ POS_FINAL,         1            /* ultima posicao visivel (HEX1) */

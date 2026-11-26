@@ -1,6 +1,6 @@
 # HexRush – Especificação do jogo
 
-Este documento cobre as etapas 6.1.1 a 6.1.3 do enunciado: as dúvidas levantadas e as decisões tomadas, a máquina de estados e o cronograma (em [`cronograma.md`](cronograma.md)). O modelo formal da máquina de estados em VHDL está em [`hexrush_fsm.vhd`](hexrush_fsm.vhd).
+Este documento cobre as etapas 6.1.1 a 6.1.3 do enunciado: as dúvidas levantadas e as decisões tomadas, a máquina de estados, a organização do código e o cronograma (em [`cronograma.md`](cronograma.md)). O modelo formal da máquina de estados em VHDL está em [`hexrush_fsm.vhd`](hexrush_fsm.vhd).
 
 Todas as decisões estão fechadas (as últimas em 26/11).
 
@@ -33,8 +33,8 @@ Todas as decisões estão fechadas (as últimas em 26/11).
 | # | Tema | Decisão |
 |---|---|---|
 | 10 | Período inicial | 1 s por passo = 50.000.000 ciclos a 50 MHz. |
-| 11 | Aceleração | A cada acerto, `p = p − p/20` (redução de 5% do valor atual), com a instrução `div`. |
-| 12 | Período mínimo | **Sem piso.** Atenção: a regra 7 do enunciado pede um limite mínimo, então isso precisa ser justificado no relatório. Em inteiros, a redução para sozinha quando p < 20 ciclos, mas o jogo fica impraticável muito antes (~77 ms após 50 acertos). |
+| 11 | Aceleração | A cada acerto, `p = p − (p >> 4)`, ou seja, redução de **6,25%** do valor atual. Inicialmente eram 5% (`p/20`), mas o processador da placa não tem `div` nem `mul` (item 21); com divisor potência de 2 a conta é um deslocamento só. |
+| 12 | Período mínimo | **Sem piso.** Atenção: a regra 7 do enunciado pede um limite mínimo, então isso precisa ser justificado no relatório. Em inteiros, a redução para sozinha quando p < 16 ciclos (p >> 4 vira 0), mas o jogo fica impraticável muito antes: ~524 ms após 10 acertos, ~275 ms após 20, ~40 ms após 50. |
 | 13 | Timer | Como no lab da aula (`part2.s`): o período do timer é o próprio passo do alvo, em modo contínuo, com uma interrupção por passo. A cada acerto o período é reprogramado. |
 
 ### Alvos
@@ -62,12 +62,13 @@ f e c 0 1 d 5 9 3 0   a e c 0 8 3 d 3 1 1
 | 15 | Formato | O mesmo do exemplo do enunciado: ACERTO mostra `Pontos`, ERRO mostra `Vidas`. |
 
 ```
-Rodada 05 | Alvo: C | Resposta: C | ACERTO | Pontos: 50
-Rodada 06 | Alvo: 7 | Resposta: 3 | ERRO   | Vidas: 2
-=== FIM DE JOGO === Pontuacao final: 80 | Sequencia: 4A9bC73
+Rodada 5 | Alvo: C | Resposta: C | ACERTO | Pontos: 50
+Rodada 6 | Alvo: 7 | Resposta: 3 | ERRO   | Vidas: 2
+=== FIM DE JOGO === Pontuacao final: 80 | Sequencia: 4A9BC73
 ```
 
-| 16 | Números | Rodada e pontos em **decimal** (reaproveita a conversão da tela `GO  XXXX`). |
+| 16 | Números | Rodada, pontos e vidas em **decimal, sem zeros à esquerda** (reaproveita a conversão da tela `GO  XXXX`, que está em `utils.s`). |
+| 17 | Letras | Dígitos hex na UART em **maiúsculas** (`0123456789ABCDEF`), inclusive b e d. No display continuam `b` e `d` minúsculos. |
 
 ### Técnica de acesso aos periféricos
 
@@ -89,6 +90,8 @@ Modelo geral: as ISRs (timer e KEY) **só levantam flags**, e o laço principal 
 | 18 | Entrega | 03/12/2026 (3 semanas a partir de 12/11). |
 | 19 | Testes | Primariamente na placa física; emulador se necessário. |
 | 20 | Placa | **DE2-115** (128 MB de SDRAM; a pilha em `0x01000000` é válida). |
+| 21 | Processador | O Nios II do sistema **não tem `div` nem `mul`** em hardware (confirmado na placa em 26/11: o `divu` gerou exceção). Nenhum código usa essas instruções: aceleração por deslocamento e conversão decimal por subtração. |
+| 22 | Testes isolados | Todo arquivo em `tests/` tem um tratador mínimo em `0x20` que acende todos os LEDR e trava. Sem ele, uma exceção caía no meio do `_start` e o teste reiniciava sozinho. |
 
 ---
 
@@ -148,7 +151,7 @@ stateDiagram-v2
         Passagem (sem espera)
         1. apaga HEX1
         2. lê SW e compara com alvo
-        3. acerto: pontos++, p = p - p/20, reprograma timer
+        3. acerto: pontos++, p = p - (p >> 4), reprograma timer
            erro: vidas--, atualiza LEDG
         4. UART: linha da rodada
         5. rodada++
@@ -208,7 +211,7 @@ stateDiagram-v2
 1. apaga o alvo de HEX1
 2. lê SW[17:14] → resposta
 3. compara a resposta com o alvo
-   - acerto: pontos ← pontos + 1; período ← período − período/20; reprograma o timer
+   - acerto: pontos ← pontos + 1; período ← período − (período >> 4); reprograma o timer
    - erro: vidas ← vidas − 1; atualiza LEDG
 4. imprime a linha da rodada na UART (já com pontos e vidas atualizados)
 5. rodada ← rodada + 1
@@ -251,6 +254,82 @@ Observações:
 
 ---
 
-## 3. Cronograma (6.1.3)
+## 3. Organização do código
+
+### Arquivos
+
+| Arquivo | Conteúdo |
+|---|---|
+| `constants.s` | todos os `.equ`: endereços, período inicial, vidas, deslocamento da aceleração (4), códigos de letras. Incluído pelos outros arquivos com `.include` |
+| `main.s` | `_start`, inicialização e laço principal com a FSM |
+| `interrupts.s` | RTI em `0x20` e ISRs do timer e dos KEYs (só levantam flags) |
+| `display.s` | módulo criado a partir do teste atual (`set_hex_digit`), + apagar tudo, tela `PLAY` e tela `GO  XXXX`. O teste isolado vai para `tests/` |
+| `leds.s` | LEDR em unário e LEDG com as vidas |
+| `timer.s` | iniciar, parar, retomar, reprogramar período, acelerar |
+| `uart.s` | enviar caractere e string, número decimal com N dígitos, linha da rodada, linha final e mensagem de espera |
+| `targets.s` | a lista de 100 alvos (constante) + rotina que devolve `lista[i mod 100]` |
+| `utils.s` | rotinas usadas por mais de um módulo: conversão para decimal (tela GO e UART) |
+
+### Convenção de chamada
+
+A do Nios II: argumentos em r4–r7, retorno em r2 (e r3), r8–r15 livres para a sub-rotina chamada (o chamador perde esses valores a cada `call`), r16–r23 **preservados**: quem usar precisa salvar na pilha e restaurar antes do `ret`. `ra` é salvo na pilha por toda rotina que faz `call`.
+
+### Onde ficam as variáveis do jogo
+
+**Flags na memória, o resto em registradores fixos.** A lista de alvos é constante e fica em `targets.s`.
+
+| Registrador | Variável | Observação |
+|---|---|---|
+| r16 | pontos | |
+| r17 | vidas | |
+| r18 | rodada | |
+| r19 | pos | display do alvo (7 → 1) |
+| r20 | indice | posição na lista (0–99, circular) |
+| r21 | periodo | período atual do timer, em ciclos |
+| r22, r23 | livres | preservados, para o laço principal usar |
+
+- `alvo` e `proximo` **não** são guardados: são calculados na hora como `lista[indice]` e `lista[indice + 1]` pela rotina de `targets.s`.
+- O **estado** da FSM não ocupa registrador: cada estado é um trecho do laço principal com rótulo próprio, e mudar de estado é desviar para ele.
+- Os flags (`FLAG_KEY1`, `FLAG_KEY2`, `FLAG_TICK`) ficam na memória, declarados em `main.s` com `.global` (a ISR liga, o laço principal consome e desliga), porque a ISR escreve neles a qualquer momento: ela não pode mexer em um registrador que o laço principal esteja usando.
+- Os outros arquivos **não** leem r16–r21 diretamente: recebem o que precisam como argumento (ex.: os pontos chegam em r4 para a rotina da UART). Isso deixa as interfaces explícitas.
+- Regras que valem para todos: toda rotina que usar r16–r23 salva e restaura; a ISR só usa `et` e registradores que ela mesma salva e restaura.
+
+### Interfaces das sub-rotinas (6.1.5)
+
+Todas seguem a convenção acima. "—" = sem argumento ou sem retorno.
+
+| Arquivo | Rotina | Entrada | Saída |
+|---|---|---|---|
+| `display.s` | `set_hex_digit` | r4 = display 0–7, r5 = dígito 0–15 ou `0xFF` (apaga) | — |
+| | `set_hex_raw` | r4 = display 0–7, r5 = padrão de 7 segmentos (letras) | — |
+| | `clear_hex` | — | — |
+| | `show_play` | — | — |
+| | `show_game_over` | r4 = pontos | — |
+| `leds.s` | `set_ledr_unary` | r4 = n (0–15) | — |
+| | `set_ledg_lives` | r4 = vidas | — |
+| | `clear_leds` | — | — |
+| `timer.s` | `timer_start` | r4 = período em ciclos | — |
+| | `timer_stop` | — | — |
+| | `timer_resume` | — | — |
+| | `next_period` | r4 = período | r2 = período − (período >> 4) |
+| `interrupts.s` | `interrupts_init` | — | — (ITO do timer, máscara dos KEYs, `ienable`, PIE) |
+| `targets.s` | `get_target` | r4 = índice | r2 = `lista[índice mod 100]` |
+| `utils.s` | `to_bcd` | r4 = valor (0–99.999.999) | r2 = o valor em BCD compactado: 8 dígitos decimais, um por nibble |
+| `uart.s` | `uart_putc` | r4 = caractere | — |
+| | `uart_puts` | r4 = endereço da string terminada em 0 | — |
+| | `uart_put_dec` | r4 = valor | — (sem zeros à esquerda) |
+| | `uart_put_hex_digit` | r4 = 0–15 | — (maiúscula) |
+| | `uart_print_wait` | — | — |
+| | `uart_print_round` | r4 = rodada, r5 = alvo, r6 = resposta, r7 = pontos (acerto) ou vidas (erro) | — |
+| | `uart_print_end` | r4 = pontos, r5 = nº de rodadas jogadas | — |
+
+- `uart_print_round` decide ACERTO/ERRO comparando r5 com r6, para caber nos 4 registradores de argumento.
+- `uart_print_end` monta a "Sequencia" chamando `get_target` de 0 até rodadas − 1.
+- `to_bcd` não divide: para cada potência de 10 (10.000.000 até 1) subtrai enquanto der e conta quantas vezes, porque o processador não tem `div`.
+- `to_bcd` serve aos dois usos: `show_game_over` pega os 4 nibbles de baixo (com zeros, `GO  0007`), e `uart_put_dec` pula os nibbles zero da esquerda.
+
+---
+
+## 4. Cronograma (6.1.3)
 
 Ver [`cronograma.md`](cronograma.md).

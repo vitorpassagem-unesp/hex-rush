@@ -43,7 +43,7 @@ entity hexrush_fsm is
     -- comandos para o "datapath" (sub-rotinas no software)
     timer_run     : out std_logic;  -- timer contando
     timer_reload  : out std_logic;  -- (re)programa o periodo no timer
-    reduz_periodo : out std_logic;  -- p := p - p/20 (antes do reload)
+    reduz_periodo : out std_logic;  -- p := p - (p >> 4) (antes do reload)
     proximo_alvo  : out std_logic;  -- alvo := proximo; proximo := lista[i++ mod 100]
     reinicia_lista: out std_logic;  -- toda partida comeca no 1o alvo
     mostra_sw     : out std_logic;  -- HEX0 acompanha SW continuamente

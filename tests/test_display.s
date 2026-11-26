@@ -14,8 +14,9 @@
  *      - um alvo anda de HEX7 ate HEX1, um display por segundo, e volta em
  *        HEX7 com o proximo valor (0, 1, ..., F, 0, ...)
  *
- * Se travar no passo 2, a instrucao divu (usada em to_bcd) provavelmente nao
- * existe no processador da placa.
+ * Se TODOS os LEDR acenderem, houve uma excecao (ver TRATADOR_EXCECAO):
+ * pause e olhe o registrador ea, que aponta para a instrucao seguinte a
+ * que falhou.
  *
  * O timer aqui e lido por polling so para isolar o display; no jogo ele usa
  * interrupcao.
@@ -24,6 +25,23 @@
 .include "constants.s"
 
 .text
+
+/* ----------------------------------------------------------------------------
+ * Tratador de excecao so para testes.
+ * O Nios II desvia para 0x20 em qualquer excecao. Sem nada aqui, o desvio
+ * caia no meio do _start e o teste reiniciava sozinho (foi o que escondeu o
+ * divu sem hardware). Agora uma excecao acende todos os LEDR e para tudo.
+ * So usa et e r8, para que ea, estatus e os argumentos (r4-r7) continuem
+ * mostrando onde e com que valores a excecao aconteceu.
+ * ---------------------------------------------------------------------------- */
+.org 0x20
+TRATADOR_EXCECAO:
+    movia et, LEDR_BASE
+    movia r8, 0x3FFFF               /* LEDR[17:0] todos acesos */
+    stwio r8, 0(et)
+.Ltrava_excecao:
+    br    .Ltrava_excecao
+
 .global _start
 _start:
     movia sp, STACK_TOP
