@@ -1,6 +1,6 @@
 # HexRush – Especificação do jogo
 
-Este documento cobre as etapas 6.1.1 a 6.1.3 do enunciado: as dúvidas levantadas e as decisões tomadas, a máquina de estados e o cronograma (em [`cronograma.md`](cronograma.md)). O modelo formal da máquina de estados em VHDL está em [`hexrush_fsm.vhd`](hexrush_fsm.vhd).
+Este documento cobre as etapas 6.1.1 a 6.1.3 do enunciado: as dúvidas levantadas e as decisões tomadas, a máquina de estados, a organização do código e o cronograma (em [`cronograma.md`](cronograma.md)). O modelo formal da máquina de estados em VHDL está em [`hexrush_fsm.vhd`](hexrush_fsm.vhd).
 
 Todas as decisões estão fechadas (as últimas em 26/11).
 
@@ -251,6 +251,47 @@ Observações:
 
 ---
 
-## 3. Cronograma (6.1.3)
+## 3. Organização do código
+
+### Arquivos
+
+| Arquivo | Conteúdo |
+|---|---|
+| `constants.s` | todos os `.equ`: endereços, período inicial, vidas, divisor da aceleração (20), códigos de letras. Incluído pelos outros arquivos com `.include` |
+| `main.s` | `_start`, inicialização e laço principal com a FSM |
+| `interrupts.s` | RTI em `0x20` e ISRs do timer e dos KEYs (só levantam flags) |
+| `display.s` | módulo criado a partir do teste atual (`set_hex_digit`), + apagar tudo, tela `PLAY` e tela `GO  XXXX`. O teste isolado vai para `tests/` |
+| `leds.s` | LEDR em unário e LEDG com as vidas |
+| `timer.s` | iniciar, parar, retomar, reprogramar período, acelerar |
+| `uart.s` | enviar caractere e string, número decimal com N dígitos, linha da rodada, linha final e mensagem de espera |
+| `targets.s` | a lista de 100 alvos (constante) + rotina que devolve `lista[i mod 100]` |
+
+### Convenção de chamada
+
+A do Nios II: argumentos em r4–r7, retorno em r2 (e r3), r8–r15 livres para a sub-rotina chamada (o chamador perde esses valores a cada `call`), r16–r23 **preservados**: quem usar precisa salvar na pilha e restaurar antes do `ret`. `ra` é salvo na pilha por toda rotina que faz `call`.
+
+### Onde ficam as variáveis do jogo
+
+**Flags na memória, o resto em registradores fixos.** A lista de alvos é constante e fica em `targets.s`.
+
+| Registrador | Variável | Observação |
+|---|---|---|
+| r16 | pontos | |
+| r17 | vidas | |
+| r18 | rodada | |
+| r19 | pos | display do alvo (7 → 1) |
+| r20 | indice | posição na lista (0–99, circular) |
+| r21 | periodo | período atual do timer, em ciclos |
+| r22, r23 | livres | preservados, para o laço principal usar |
+
+- `alvo` e `proximo` **não** são guardados: são calculados na hora como `lista[indice]` e `lista[indice + 1]` pela rotina de `targets.s`.
+- O **estado** da FSM não ocupa registrador: cada estado é um trecho do laço principal com rótulo próprio, e mudar de estado é desviar para ele.
+- Os flags (`FLAG_KEY1`, `FLAG_KEY2`, `FLAG_TICK`) ficam na memória porque a ISR escreve neles a qualquer momento: ela não pode mexer em um registrador que o laço principal esteja usando.
+- Os outros arquivos **não** leem r16–r21 diretamente: recebem o que precisam como argumento (ex.: os pontos chegam em r4 para a rotina da UART). Isso deixa as interfaces explícitas.
+- Regras que valem para todos: toda rotina que usar r16–r23 salva e restaura; a ISR só usa `et` e registradores que ela mesma salva e restaura.
+
+---
+
+## 4. Cronograma (6.1.3)
 
 Ver [`cronograma.md`](cronograma.md).
