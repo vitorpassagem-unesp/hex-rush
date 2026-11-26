@@ -30,7 +30,7 @@ Snapshot de 26/11. A versão viva, com status editável, está na planilha do gr
 | 13 | S2 | Pausa (KEY2) e reinício (KEY1) integrados à FSM | Moisés | 21/11 | 24/11 | 7, 9 | Pausa congela tudo; KEY1 reinicia do zero |
 | 14 | S2 | Integração da semana 2 e teste na placa | Todos | 25/11 | 25/11 | 10–13 | Rodadas completas funcionando (sem pontuação final) |
 | 15 | S3 | Pontos, vidas, fim de jogo e tela `GO  XXXX` | Gustavo Gomes | 26/11 | 28/11 | 14 | Jogo termina com 0 vidas e mostra placar com zeros à esquerda |
-| 16 | S3 | Aceleração: `p = p − p/20` e reprogramação do timer | Moisés | 26/11 | 27/11 | 14 | Período medido cai 5% por acerto |
+| 16 | S3 | Aceleração: `p = p − (p >> 4)` e reprogramação do timer | Moisés | 26/11 | 27/11 | 14 | Período medido cai 6,25% por acerto |
 | 17 | S3 | Mensagens da UART por rodada + linha final com a sequência | Vitor | 26/11 | 28/11 | 8, 14 | Formato igual ao do enunciado |
 | 18 | S3 | Testes de casos-limite (KEY1/KEY2 simultâneos, pausa no fim da rodada, fim da lista, muitos acertos) | Gustavo Varjão | 28/11 | 01/12 | 15–17 | Checklist de testes registrado no relatório |
 | 19 | S3 | Revisão dos comentários (explicar o porquê) e organização dos arquivos | Todos | 30/11 | 01/12 | 15–17 | Cada arquivo revisado por outra pessoa |
