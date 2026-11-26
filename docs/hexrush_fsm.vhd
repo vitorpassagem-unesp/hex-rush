@@ -11,7 +11,7 @@
 -- Cada saida de controle corresponde a uma sub-rotina que o laco principal
 -- chama naquele estado.
 --
--- Decisoes ainda PENDENTES estao marcadas com "PENDENTE".
+-- Todas as decisoes estao fechadas (ver docs/especificacao.md).
 -------------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
@@ -21,12 +21,12 @@ entity hexrush_fsm is
   generic (
     G_VIDAS_INICIAIS : natural := 3;      -- decidido: 3 vidas
     G_POS_INICIAL    : natural := 7;      -- alvo nasce em HEX7
-    -- PENDENTE (pergunta 1): KEY1 reinicia durante a pausa?
-    G_KEY1_NA_PAUSA  : boolean := false
+    -- decidido: KEY1 reinicia a partida tambem durante a pausa
+    G_KEY1_NA_PAUSA  : boolean := true
   );
   port (
     clk           : in  std_logic;
-    rst           : in  std_logic;                     -- ligar a placa
+    rst           : in  std_logic;                     -- ligar a placa (vai para AGUARDANDO)
     key1          : in  std_logic;                     -- pulso de 1 ciclo
     key2          : in  std_logic;                     -- pulso de 1 ciclo
     tick          : in  std_logic;                     -- pulso de 1 ciclo
@@ -44,20 +44,23 @@ entity hexrush_fsm is
     timer_run     : out std_logic;  -- timer contando
     timer_reload  : out std_logic;  -- (re)programa o periodo no timer
     reduz_periodo : out std_logic;  -- p := p - p/20 (antes do reload)
-    proximo_alvo  : out std_logic;  -- alvo := proximo; proximo := lista[i++]
-    reinicia_lista: out std_logic;  -- PENDENTE (D): KEY1 volta ao inicio?
+    proximo_alvo  : out std_logic;  -- alvo := proximo; proximo := lista[i++ mod 100]
+    reinicia_lista: out std_logic;  -- toda partida comeca no 1o alvo
     mostra_sw     : out std_logic;  -- HEX0 acompanha SW continuamente
     uart_rodada   : out std_logic;  -- imprime "Rodada XX | Alvo ..."
     uart_fim      : out std_logic;  -- imprime "=== FIM DE JOGO ==="
-    mostra_go     : out std_logic;  -- HEX7..HEX0 = "GO  XXXX"
+    mostra_play   : out std_logic;  -- HEX3..HEX0 = "PLAY", resto e LEDs apagados
+    uart_espera   : out std_logic;  -- imprime "Pressione KEY1 para iniciar"
+    mostra_go     : out std_logic;  -- HEX7..HEX0 = "GO  XXXX", LEDR/LEDG apagados
     acerto_dbg    : out std_logic
   );
 end entity hexrush_fsm;
 
 architecture rtl of hexrush_fsm is
 
-  type t_estado is (S_INICIO, S_JOGANDO, S_PAUSADO, S_FIM_RODADA, S_FIM_JOGO);
+  type t_estado is (S_AGUARDANDO, S_INICIO, S_JOGANDO, S_PAUSADO, S_FIM_RODADA, S_FIM_JOGO);
   signal estado, prox : t_estado;
+  signal estado_ant  : t_estado;  -- para gerar o pulso da mensagem de espera
 
   signal r_pos    : unsigned(2 downto 0);
   signal r_vidas  : unsigned(3 downto 0);
@@ -81,8 +84,13 @@ begin
     prox <= estado;
     case estado is
 
+      when S_AGUARDANDO =>
+        if key1 = '1' then                 -- decidido: o jogo so comeca com KEY1
+          prox <= S_INICIO;
+        end if;                            -- KEY2 ignorado
+
       when S_INICIO =>
-        prox <= S_JOGANDO;                 -- jogo comeca sem esperar KEY1
+        prox <= S_JOGANDO;                 -- passagem: so inicializa
 
       when S_JOGANDO =>
         if key1 = '1' then
@@ -109,7 +117,7 @@ begin
         end if;
 
       when S_FIM_JOGO =>
-        if key1 = '1' then                 -- KEY2 ignorado (PENDENTE, pergunta 2)
+        if key1 = '1' then                 -- KEY2 ignorado (decidido)
           prox <= S_INICIO;
         end if;
 
@@ -123,13 +131,15 @@ begin
   begin
     if rising_edge(clk) then
       if rst = '1' then
-        estado   <= S_INICIO;
+        estado     <= S_AGUARDANDO;
+        estado_ant <= S_INICIO;            -- diferente de AGUARDANDO: gera o pulso
         r_pos    <= to_unsigned(G_POS_INICIAL, 3);
         r_vidas  <= to_unsigned(G_VIDAS_INICIAIS, 4);
         r_pontos <= (others => '0');
         r_rodada <= to_unsigned(1, 14);
       else
-        estado <= prox;
+        estado     <= prox;
+        estado_ant <= estado;
 
         case estado is
           when S_INICIO =>
@@ -176,6 +186,9 @@ begin
   -- antes de imprimir).
   uart_rodada    <= '1' when estado = S_FIM_RODADA else '0';
   uart_fim       <= '1' when estado = S_FIM_RODADA and prox = S_FIM_JOGO else '0';
+  mostra_play    <= '1' when estado = S_AGUARDANDO else '0';
+  -- a mensagem sai uma vez so, no primeiro ciclo em AGUARDANDO
+  uart_espera    <= '1' when estado = S_AGUARDANDO and estado_ant /= S_AGUARDANDO else '0';
   mostra_go      <= '1' when estado = S_FIM_JOGO else '0';
   acerto_dbg     <= acerto;
 
@@ -184,7 +197,8 @@ begin
     "001" when S_JOGANDO,
     "010" when S_PAUSADO,
     "011" when S_FIM_RODADA,
-    "100" when S_FIM_JOGO;
+    "100" when S_FIM_JOGO,
+    "101" when S_AGUARDANDO;
 
   pos_alvo <= r_pos;
   vidas    <= r_vidas;

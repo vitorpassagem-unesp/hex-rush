@@ -2,7 +2,7 @@
 
 Este documento cobre as etapas 6.1.1 a 6.1.3 do enunciado: as dúvidas levantadas e as decisões tomadas, a máquina de estados e o cronograma (em [`cronograma.md`](cronograma.md)). O modelo formal da máquina de estados em VHDL está em [`hexrush_fsm.vhd`](hexrush_fsm.vhd).
 
-Itens marcados com **PENDENTE** ainda precisam ser decididos pelo grupo.
+Todas as decisões estão fechadas (as últimas em 26/11).
 
 ---
 
@@ -22,10 +22,11 @@ Itens marcados com **PENDENTE** ainda precisam ser decididos pelo grupo.
 
 | # | Tema | Decisão |
 |---|---|---|
-| 6 | Início | O jogo começa direto ao ligar a placa, sem esperar KEY1. |
+| 6 | Início | Ao ligar a placa, o jogo **espera o KEY1** (estado AGUARDANDO). Nesse estado: HEX7–HEX4 apagados, HEX3–HEX0 mostram `PLAY` (P = `0x73`, L = `0x38`, A = `0x77`, Y = `0x6E`), LEDR e LEDG apagados, timer parado e a UART imprime `Pressione KEY1 para iniciar` uma vez. KEY2 é ignorado. Depois do fim de jogo, o KEY1 começa uma nova partida direto (não volta ao AGUARDANDO). |
 | 7 | HEX0 | Mostra **continuamente** o valor de SW[17:14] em hex (regra 3 do enunciado). O valor a ser atingido é o alvo, que anda. |
-| 8 | Pausa (KEY2) | Congela todo o programa, inclusive a atualização de HEX0. |
-| 9 | Fim de jogo | HEX7–HEX0 mostram `GO  XXXX`, com a pontuação em decimal e **zeros à esquerda** (ex.: `GO  0007`). G = `0x3D`. |
+| 8 | Pausa (KEY2) | Congela todo o programa, inclusive a atualização de HEX0. KEY1 durante a pausa **reinicia** a partida. |
+| 8b | KEY2 no fim de jogo | Ignorado; só KEY1 sai do fim de jogo. |
+| 9 | Fim de jogo | HEX7–HEX0 mostram `GO  XXXX`, com a pontuação em decimal e **zeros à esquerda** (ex.: `GO  0007`). G = `0x3D`, O = `0x5C` (o minúsculo, para não confundir com o zero). LEDR e LEDG apagados. |
 
 ### Velocidade e temporização
 
@@ -41,6 +42,8 @@ Itens marcados com **PENDENTE** ainda precisam ser decididos pelo grupo.
 | # | Tema | Decisão |
 |---|---|---|
 | 14 | Geração dos números | Lista fixa de 100 valores (abaixo). Todos os 16 dígitos aparecem; há 4 repetições seguidas. |
+| 14b | Fim da lista | A lista é **circular**: depois do 100º alvo volta ao primeiro (índice mod 100). |
+| 14c | Reinício (KEY1) | Toda partida começa no **primeiro** alvo. Por isso a "Sequencia" da linha final é `lista[0..rodada−1]` (com índice mod 100) e não precisa de buffer de histórico. |
 
 Lista (na ordem):
 
@@ -56,7 +59,14 @@ f e c 0 1 d 5 9 3 0   a e c 0 8 3 d 3 1 1
 
 | # | Tema | Decisão |
 |---|---|---|
-| 15 | Formato | O mesmo do exemplo do enunciado. |
+| 15 | Formato | O mesmo do exemplo do enunciado: ACERTO mostra `Pontos`, ERRO mostra `Vidas`. |
+
+```
+Rodada 05 | Alvo: C | Resposta: C | ACERTO | Pontos: 50
+Rodada 06 | Alvo: 7 | Resposta: 3 | ERRO   | Vidas: 2
+=== FIM DE JOGO === Pontuacao final: 80 | Sequencia: 4A9bC73
+```
+
 | 16 | Números | Rodada e pontos em **decimal** (reaproveita a conversão da tela `GO  XXXX`). |
 
 ### Técnica de acesso aos periféricos
@@ -78,16 +88,7 @@ Modelo geral: as ISRs (timer e KEY) **só levantam flags**, e o laço principal 
 | 17 | Grupo | Gustavo Gomes da Cruz, Gustavo Varjão de Frias, Moisés Nascimento Dearo, Vitor Passagem. |
 | 18 | Entrega | 03/12/2026 (3 semanas a partir de 12/11). |
 | 19 | Testes | Primariamente na placa física; emulador se necessário. |
-
-### PENDENTES
-
-- **Letra O** na tela de fim: `0x3F` (igual ao zero) ou `0x5C` (o minúsculo)?
-- **Fim da lista**: quando os 100 alvos acabam, a lista recomeça do início?
-- **KEY1 e a lista**: o reinício volta ao primeiro alvo ou continua de onde parou? (Se voltar ao início, a "Sequencia" da linha final é `lista[0..rodada−1]` e não precisa de buffer de histórico.)
-- **KEY1 durante a pausa**: reinicia direto ou é ignorado?
-- **KEY2 no fim de jogo**: ignorado?
-- **LEDR e LEDG no fim de jogo**: apagam ou ficam como estavam?
-- **Linha de ERRO na UART**: seguindo o exemplo, ACERTO mostra `Pontos: W` e ERRO mostra `Vidas: V`. Confirmar, ou as duas linhas mostram os dois valores?
+| 20 | Placa | **DE2-115** (128 MB de SDRAM; a pilha em `0x01000000` é válida). |
 
 ---
 
@@ -97,7 +98,9 @@ Modelo geral: as ISRs (timer e KEY) **só levantam flags**, e o laço principal 
 stateDiagram-v2
     direction LR
 
-    [*] --> INICIO : T0 - ligar a placa
+    [*] --> AGUARDANDO : T0 - ligar a placa
+
+    AGUARDANDO --> INICIO : T11 - KEY1
 
     INICIO --> JOGANDO : T1 - sempre
 
@@ -107,12 +110,19 @@ stateDiagram-v2
     JOGANDO --> INICIO : T6 - KEY1
 
     PAUSADO --> JOGANDO : T5 - KEY2 / START timer
-    PAUSADO --> INICIO : T10 - KEY1 (PENDENTE)
+    PAUSADO --> INICIO : T10 - KEY1
 
     FIM_RODADA --> JOGANDO : T7 - acerto ou vidas > 0 / novo alvo em HEX7
     FIM_RODADA --> FIM_JOGO : T8 - erro e vidas = 0
 
     FIM_JOGO --> INICIO : T9 - KEY1
+
+    note left of AGUARDANDO
+        HEX3-HEX0 = PLAY, resto apagado
+        LEDR e LEDG apagados, timer parado
+        UART: Pressione KEY1 para iniciar
+        KEY2 ignorado
+    end note
 
     note left of INICIO
         Passagem (sem espera)
@@ -142,28 +152,37 @@ stateDiagram-v2
            erro: vidas--, atualiza LEDG
         4. UART: linha da rodada
         5. rodada++
-        6. alvo=próximo, próximo=lista[i++], LEDR, pos=7
+        6. alvo=próximo, próximo=lista[i++ mod 100], LEDR, pos=7
     end note
 
     note right of FIM_JOGO
         STOP timer
         HEX = "GO  dddd" (zeros à esquerda)
         UART: linha FIM DE JOGO
-        LEDR/LEDG (PENDENTE)
+        LEDR e LEDG apagados
         KEY2 ignorado
     end note
 ```
 
-O Mermaid não desenha setas tracejadas em diagramas de estado; por isso a T10 aparece como seta normal, marcada como PENDENTE.
-
 ### Estados
 
+#### AGUARDANDO
+**Entra:** só ao ligar a placa.
+**Ações de entrada:**
+1. timer parado (nada de tick)
+2. HEX7–HEX4 apagados; HEX3–HEX0 ← `P L A Y`
+3. LEDR e LEDG apagados
+4. UART: `Pressione KEY1 para iniciar`
+
+**Enquanto está nele:** nada; só espera o KEY1. KEY2 é ignorado.
+**Periféricos:** HEX, LEDR, LEDG, UART, KEY (IRQ).
+
 #### INICIO (passagem, sem espera)
-**Entra:** ao ligar a placa ou com KEY1 (vindo de JOGANDO ou FIM_JOGO).
+**Entra:** com KEY1, vindo de AGUARDANDO, JOGANDO, PAUSADO ou FIM_JOGO.
 **Ações de entrada, nesta ordem:**
 1. pontos ← 0, rodada ← 1, vidas ← 3
 2. período ← 50.000.000 (1 s)
-3. índice da lista ← 0 *(PENDENTE)*; alvo ← lista[0], próximo ← lista[1]
+3. índice da lista ← 0 (toda partida começa no primeiro alvo); alvo ← lista[0], próximo ← lista[1]
 4. pos ← 7
 5. limpa os flags de KEY1, KEY2 e tick, para que um aperto antigo não vaze para a partida nova
 6. apaga HEX7–HEX1 e escreve o alvo em HEX7
@@ -193,7 +212,7 @@ O Mermaid não desenha setas tracejadas em diagramas de estado; por isso a T10 a
    - erro: vidas ← vidas − 1; atualiza LEDG
 4. imprime a linha da rodada na UART (já com pontos e vidas atualizados)
 5. rodada ← rodada + 1
-6. *(só se o jogo continua)* alvo ← próximo; próximo ← lista[i++]; LEDR ← unário do próximo; pos ← 7; escreve o alvo em HEX7
+6. *(só se o jogo continua)* alvo ← próximo; próximo ← lista[(i++) mod 100]; LEDR ← unário do próximo; pos ← 7; escreve o alvo em HEX7
 
 **Periféricos:** SW, Timer, LEDG, LEDR, HEX, UART (polling).
 
@@ -202,16 +221,17 @@ O Mermaid não desenha setas tracejadas em diagramas de estado; por isso a T10 a
 1. STOP no timer
 2. HEX7–HEX0 ← `G O _ _ d d d d`
 3. UART: `=== FIM DE JOGO === Pontuacao final: … | Sequencia: …`
-4. LEDR e LEDG: *(PENDENTE)*
+4. apaga LEDR e LEDG
 
 **Enquanto está nele:** nada; HEX0 deixa de mostrar SW.
-**Periféricos:** HEX, Timer, UART, KEY (IRQ).
+**Periféricos:** HEX, Timer, UART, LEDR, LEDG, KEY (IRQ).
 
 ### Transições
 
 | # | De → Para | Condição | Ação |
 |---|---|---|---|
-| T0 | ● → INICIO | ligar a placa | — |
+| T0 | ● → AGUARDANDO | ligar a placa | — |
+| T11 | AGUARDANDO → INICIO | KEY1 | — |
 | T1 | INICIO → JOGANDO | sempre | — |
 | T2 | JOGANDO → JOGANDO | tick e pos > 1 | apaga HEX[pos]; pos ← pos − 1; escreve o alvo em HEX[pos] |
 | T3 | JOGANDO → FIM_RODADA | tick e pos = 1 | — |
@@ -221,12 +241,13 @@ O Mermaid não desenha setas tracejadas em diagramas de estado; por isso a T10 a
 | T7 | FIM_RODADA → JOGANDO | acerto, ou vidas > 0 depois do erro | novo alvo em HEX7 |
 | T8 | FIM_RODADA → FIM_JOGO | erro e vidas = 0 depois do erro | — |
 | T9 | FIM_JOGO → INICIO | KEY1 | — |
-| T10 | PAUSADO → INICIO | KEY1 | *PENDENTE* |
+| T10 | PAUSADO → INICIO | KEY1 | — (o INICIO refaz tudo, inclusive o START do timer) |
 
 Observações:
+- O AGUARDANDO só existe uma vez, ao ligar a placa: todo KEY1 posterior leva direto ao INICIO.
 - T7 e T8 são complementares: uma das duas sempre acontece ao sair de FIM_RODADA.
 - O alvo faz T2 seis vezes (7 → 1) e depois T3: são 7 períodos para o jogador acertar.
-- No PAUSADO o tick nem chega, porque o timer está parado. No FIM_JOGO, KEY2 e tick são ignorados.
+- No PAUSADO o tick nem chega, porque o timer está parado; KEY1 reinicia (T10). No FIM_JOGO, KEY2 e tick são ignorados.
 
 ---
 
