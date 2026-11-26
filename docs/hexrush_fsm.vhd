@@ -11,7 +11,7 @@
 -- Cada saida de controle corresponde a uma sub-rotina que o laco principal
 -- chama naquele estado.
 --
--- Decisoes ainda PENDENTES estao marcadas com "PENDENTE".
+-- Todas as decisoes estao fechadas (ver docs/especificacao.md).
 -------------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
@@ -21,8 +21,8 @@ entity hexrush_fsm is
   generic (
     G_VIDAS_INICIAIS : natural := 3;      -- decidido: 3 vidas
     G_POS_INICIAL    : natural := 7;      -- alvo nasce em HEX7
-    -- PENDENTE (pergunta 1): KEY1 reinicia durante a pausa?
-    G_KEY1_NA_PAUSA  : boolean := false
+    -- decidido: KEY1 reinicia a partida tambem durante a pausa
+    G_KEY1_NA_PAUSA  : boolean := true
   );
   port (
     clk           : in  std_logic;
@@ -44,12 +44,12 @@ entity hexrush_fsm is
     timer_run     : out std_logic;  -- timer contando
     timer_reload  : out std_logic;  -- (re)programa o periodo no timer
     reduz_periodo : out std_logic;  -- p := p - p/20 (antes do reload)
-    proximo_alvo  : out std_logic;  -- alvo := proximo; proximo := lista[i++]
-    reinicia_lista: out std_logic;  -- PENDENTE (D): KEY1 volta ao inicio?
+    proximo_alvo  : out std_logic;  -- alvo := proximo; proximo := lista[i++ mod 100]
+    reinicia_lista: out std_logic;  -- toda partida comeca no 1o alvo
     mostra_sw     : out std_logic;  -- HEX0 acompanha SW continuamente
     uart_rodada   : out std_logic;  -- imprime "Rodada XX | Alvo ..."
     uart_fim      : out std_logic;  -- imprime "=== FIM DE JOGO ==="
-    mostra_go     : out std_logic;  -- HEX7..HEX0 = "GO  XXXX"
+    mostra_go     : out std_logic;  -- HEX7..HEX0 = "GO  XXXX", LEDR/LEDG apagados
     acerto_dbg    : out std_logic
   );
 end entity hexrush_fsm;
@@ -109,7 +109,7 @@ begin
         end if;
 
       when S_FIM_JOGO =>
-        if key1 = '1' then                 -- KEY2 ignorado (PENDENTE, pergunta 2)
+        if key1 = '1' then                 -- KEY2 ignorado (decidido)
           prox <= S_INICIO;
         end if;
 
