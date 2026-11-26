@@ -22,7 +22,7 @@ Todas as decisões estão fechadas (as últimas em 26/11).
 
 | # | Tema | Decisão |
 |---|---|---|
-| 6 | Início | O jogo começa direto ao ligar a placa, sem esperar KEY1. |
+| 6 | Início | Ao ligar a placa, o jogo **espera o KEY1** (estado AGUARDANDO). Nesse estado: HEX7–HEX4 apagados, HEX3–HEX0 mostram `PLAY` (P = `0x73`, L = `0x38`, A = `0x77`, Y = `0x6E`), LEDR e LEDG apagados, timer parado e a UART imprime `Pressione KEY1 para iniciar` uma vez. KEY2 é ignorado. Depois do fim de jogo, o KEY1 começa uma nova partida direto (não volta ao AGUARDANDO). |
 | 7 | HEX0 | Mostra **continuamente** o valor de SW[17:14] em hex (regra 3 do enunciado). O valor a ser atingido é o alvo, que anda. |
 | 8 | Pausa (KEY2) | Congela todo o programa, inclusive a atualização de HEX0. KEY1 durante a pausa **reinicia** a partida. |
 | 8b | KEY2 no fim de jogo | Ignorado; só KEY1 sai do fim de jogo. |
@@ -98,7 +98,9 @@ Modelo geral: as ISRs (timer e KEY) **só levantam flags**, e o laço principal 
 stateDiagram-v2
     direction LR
 
-    [*] --> INICIO : T0 - ligar a placa
+    [*] --> AGUARDANDO : T0 - ligar a placa
+
+    AGUARDANDO --> INICIO : T11 - KEY1
 
     INICIO --> JOGANDO : T1 - sempre
 
@@ -114,6 +116,13 @@ stateDiagram-v2
     FIM_RODADA --> FIM_JOGO : T8 - erro e vidas = 0
 
     FIM_JOGO --> INICIO : T9 - KEY1
+
+    note left of AGUARDANDO
+        HEX3-HEX0 = PLAY, resto apagado
+        LEDR e LEDG apagados, timer parado
+        UART: Pressione KEY1 para iniciar
+        KEY2 ignorado
+    end note
 
     note left of INICIO
         Passagem (sem espera)
@@ -157,8 +166,19 @@ stateDiagram-v2
 
 ### Estados
 
+#### AGUARDANDO
+**Entra:** só ao ligar a placa.
+**Ações de entrada:**
+1. timer parado (nada de tick)
+2. HEX7–HEX4 apagados; HEX3–HEX0 ← `P L A Y`
+3. LEDR e LEDG apagados
+4. UART: `Pressione KEY1 para iniciar`
+
+**Enquanto está nele:** nada; só espera o KEY1. KEY2 é ignorado.
+**Periféricos:** HEX, LEDR, LEDG, UART, KEY (IRQ).
+
 #### INICIO (passagem, sem espera)
-**Entra:** ao ligar a placa ou com KEY1 (vindo de JOGANDO, PAUSADO ou FIM_JOGO).
+**Entra:** com KEY1, vindo de AGUARDANDO, JOGANDO, PAUSADO ou FIM_JOGO.
 **Ações de entrada, nesta ordem:**
 1. pontos ← 0, rodada ← 1, vidas ← 3
 2. período ← 50.000.000 (1 s)
@@ -210,7 +230,8 @@ stateDiagram-v2
 
 | # | De → Para | Condição | Ação |
 |---|---|---|---|
-| T0 | ● → INICIO | ligar a placa | — |
+| T0 | ● → AGUARDANDO | ligar a placa | — |
+| T11 | AGUARDANDO → INICIO | KEY1 | — |
 | T1 | INICIO → JOGANDO | sempre | — |
 | T2 | JOGANDO → JOGANDO | tick e pos > 1 | apaga HEX[pos]; pos ← pos − 1; escreve o alvo em HEX[pos] |
 | T3 | JOGANDO → FIM_RODADA | tick e pos = 1 | — |
@@ -223,6 +244,7 @@ stateDiagram-v2
 | T10 | PAUSADO → INICIO | KEY1 | — (o INICIO refaz tudo, inclusive o START do timer) |
 
 Observações:
+- O AGUARDANDO só existe uma vez, ao ligar a placa: todo KEY1 posterior leva direto ao INICIO.
 - T7 e T8 são complementares: uma das duas sempre acontece ao sair de FIM_RODADA.
 - O alvo faz T2 seis vezes (7 → 1) e depois T3: são 7 períodos para o jogador acertar.
 - No PAUSADO o tick nem chega, porque o timer está parado; KEY1 reinicia (T10). No FIM_JOGO, KEY2 e tick são ignorados.
