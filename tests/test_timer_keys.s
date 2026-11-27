@@ -1,11 +1,12 @@
 /* ============================================================================
  * tests/test_timer_keys.s - Teste de interrupts.s, timer.s e leds.s
  *
- * Arquivos do projeto no Monitor Program (projeto na raiz do repo):
- *   tests/test_timer_keys.s + interrupts.s + timer.s + leds.s
+ * Arquivos do projeto no Monitor Program (projeto na raiz do repo), NESTA
+ * ORDEM, com interrupts.s em primeiro (a RTI usa .org 0x20, igual aos labs):
+ *   interrupts.s + tests/test_timer_keys.s + timer.s + leds.s
  *   + display.s + utils.s
- * A RTI fica na secao .exceptions, que o Monitor Program coloca em 0x20
- * sozinho; por isso este teste NAO tem o tratador .org 0x20 dos outros.
+ * Por isso este teste NAO tem o tratador .org 0x20 do test_display.s: a RTI
+ * de interrupts.s ja trata as outras excecoes (LEDR acesos + trava).
  *
  * O que deve acontecer:
  *   - HEX mostra "GO  dddd" com um contador que sobe 1 por segundo
