@@ -91,9 +91,9 @@ Modelo geral: as ISRs (timer e KEY) **só levantam flags**, e o laço principal 
 | 19 | Testes | Primariamente na placa física; emulador se necessário. |
 | 20 | Placa | **DE2-115** (128 MB de SDRAM; a pilha em `0x01000000` é válida). |
 | 21 | Processador | O Nios II do sistema **não tem `div` nem `mul`** em hardware (confirmado na placa em 26/11: o `divu` gerou exceção). Nenhum código usa essas instruções: aceleração por deslocamento e conversão decimal por subtração. |
+| 22 | Testes isolados | Todo arquivo em `tests/` tem um tratador mínimo em `0x20` que acende todos os LEDR e trava. Sem ele, uma exceção caía no meio do `_start` e o teste reiniciava sozinho. |
 | 23 | Posição da RTI | Igual aos labs: `.org 0x20` no `.text` do `interrupts.s`, que é o **primeiro arquivo** da lista do projeto. A seção `.exceptions` foi tentada, mas o linker do Monitor Program 11.0 a sobrepôs ao `.text` (ambos começando em 0x0/0x20). |
 | 24 | Reaproveitamento | Tudo que puder ser feito igual aos labs é feito igual aos labs (estrutura da RTI, configuração do timer, polling da UART, tabela de 7 segmentos). |
-| 22 | Testes isolados | Todo arquivo em `tests/` tem um tratador mínimo em `0x20` que acende todos os LEDR e trava. Sem ele, uma exceção caía no meio do `_start` e o teste reiniciava sozinho. |
 
 ---
 
