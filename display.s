@@ -15,23 +15,24 @@
  * alterar r8-r15 (caller-saved).
  * ============================================================================ */
 
-.include "constants.s"
+.include "constants.s"                  /* traz enderecos e codigos de letras */
 
 /* Padroes montados de uma vez para escrever 4 displays com um so stwio. */
-.equ PADRAO_PLAY, (SEG_P << 24) | (SEG_L << 16) | (SEG_A << 8) | SEG_Y
-.equ PADRAO_GO,   (SEG_G << 24) | (SEG_O << 16)     /* HEX5 e HEX4 apagados */
+.equ PADRAO_PLAY, (SEG_P << 24) | (SEG_L << 16) | (SEG_A << 8) | SEG_Y   /* P L A Y em HEX3..HEX0 */
+.equ PADRAO_GO,   (SEG_G << 24) | (SEG_O << 16)                          /* G O _ _ em HEX7..HEX4 */
 
-.global set_hex_raw
-.global set_hex_digit
-.global clear_hex
-.global show_play
-.global show_game_over
+/* Rotinas visiveis para os outros arquivos */
+.global set_hex_raw                     /* exporta set_hex_raw */
+.global set_hex_digit                   /* exporta set_hex_digit */
+.global clear_hex                       /* exporta clear_hex */
+.global show_play                       /* exporta show_play */
+.global show_game_over                  /* exporta show_game_over */
 
 /* Tabela 7 segmentos (0..F) conforme Tabela 2 do enunciado.
  * Fica em .data (e nao em .rodata) porque e a secao que o Monitor Program
  * sempre posiciona na memoria em projetos so de assembly. */
-.data
-HEX7SEG_TABLE:
+.data                                   /* passa a montar na secao de dados */
+HEX7SEG_TABLE:                          /* inicio da tabela: indice = digito */
     .byte 0x3F  /* 0: abcdef  */
     .byte 0x06  /* 1: bc      */
     .byte 0x5B  /* 2: abdeg   */
@@ -49,7 +50,7 @@ HEX7SEG_TABLE:
     .byte 0x79  /* E: adefg   */
     .byte 0x71  /* F: aefg    */
 
-.text
+.text                                   /* volta a montar na secao de codigo */
 
 /* ----------------------------------------------------------------------------
  * set_hex_raw
@@ -61,27 +62,31 @@ HEX7SEG_TABLE:
  * display apagaria os outros tres.
  * ---------------------------------------------------------------------------- */
 set_hex_raw:
-    andi  r8, r4, 0x07              /* indice 0..7 (protege contra lixo) */
-    andi  r9, r5, 0xFF              /* padrao ocupa so um byte */
+    /* Limpa os argumentos para nao escrever fora do lugar */
+    andi  r8, r4, 0x07              /* r8 = indice do display, so 3 bits (0..7) */
+    andi  r9, r5, 0xFF              /* r9 = padrao, so o byte de baixo */
 
-    movia r10, HEX3_HEX0_BASE       /* HEX0..HEX3 */
-    movi  r11, 4
-    blt   r8, r11, .Lraw_escreve
-    subi  r8, r8, 4                 /* HEX4..HEX7: posicao dentro do outro word */
-    movia r10, HEX7_HEX4_BASE
+    /* Escolhe o registrador do grupo (HEX3..0 ou HEX7..4) e a posicao nele */
+    movia r10, HEX3_HEX0_BASE       /* r10 = endereco do grupo HEX3..HEX0 */
+    movi  r11, 4                    /* r11 = 4, primeiro display do outro grupo */
+    blt   r8, r11, .Lraw_escreve    /* se indice < 4, ja e o grupo certo: pula */
+    subi  r8, r8, 4                 /* indice 4..7 vira posicao 0..3 no grupo */
+    movia r10, HEX7_HEX4_BASE       /* r10 = endereco do grupo HEX7..HEX4 */
 
 .Lraw_escreve:
-    slli  r8, r8, 3                 /* deslocamento = 8 bits por display */
-    movi  r11, 0xFF
-    sll   r11, r11, r8
-    nor   r11, r11, r11             /* mascara que zera so o byte deste display */
-    sll   r9, r9, r8
+    /* Monta a mascara e o padrao deslocados para o byte do display */
+    slli  r8, r8, 3                 /* r8 = posicao * 8 = deslocamento em bits */
+    movi  r11, 0xFF                 /* r11 = 0xFF (um byte cheio) */
+    sll   r11, r11, r8              /* r11 = 0xFF na posicao do display */
+    nor   r11, r11, r11             /* r11 = inverte: zeros so no byte do display */
+    sll   r9, r9, r8                /* r9 = padrao na posicao do display */
 
-    ldwio r12, 0(r10)               /* estado atual dos 4 displays do grupo */
-    and   r12, r12, r11
-    or    r12, r12, r9
-    stwio r12, 0(r10)
-    ret
+    /* Le os 4 displays, troca so o byte deste e escreve de volta */
+    ldwio r12, 0(r10)               /* r12 = conteudo atual dos 4 displays */
+    and   r12, r12, r11             /* zera o byte do display escolhido */
+    or    r12, r12, r9              /* coloca o padrao novo nesse byte */
+    stwio r12, 0(r10)               /* escreve os 4 displays de volta */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * set_hex_digit
@@ -90,27 +95,32 @@ set_hex_raw:
  * padrao de 7 segmentos.
  * ---------------------------------------------------------------------------- */
 set_hex_digit:
-    subi  sp, sp, 4
-    stw   ra, 0(sp)                 /* chama set_hex_raw: precisa guardar ra */
+    /* Prologo: vai chamar set_hex_raw, entao guarda o ra */
+    subi  sp, sp, 4                 /* reserva 1 word na pilha */
+    stw   ra, 0(sp)                 /* salva o endereco de retorno */
 
-    movi  r8, HEX_APAGA
-    beq   r5, r8, .Ldig_apaga
+    /* Caso especial: pedido para apagar */
+    movi  r8, HEX_APAGA             /* r8 = codigo de "apagar" (0xFF) */
+    beq   r5, r8, .Ldig_apaga       /* se r5 == 0xFF, vai apagar */
 
-    andi  r8, r5, 0x0F
-    movia r9, HEX7SEG_TABLE
-    add   r9, r9, r8
-    ldbu  r5, 0(r9)                 /* ldbu: padrao e byte sem sinal */
-    br    .Ldig_escreve
+    /* Converte o digito no padrao pela tabela */
+    andi  r8, r5, 0x0F              /* r8 = digito, so 4 bits (0..15) */
+    movia r9, HEX7SEG_TABLE         /* r9 = endereco da tabela */
+    add   r9, r9, r8                /* r9 = endereco da entrada do digito */
+    ldbu  r5, 0(r9)                 /* r5 = padrao do digito (byte sem sinal) */
+    br    .Ldig_escreve             /* pula o caso de apagar */
 
 .Ldig_apaga:
-    movi  r5, SEG_APAGADO
+    movi  r5, SEG_APAGADO           /* r5 = padrao com todos os segmentos apagados */
 
 .Ldig_escreve:
-    call  set_hex_raw               /* r4 continua sendo o indice do display */
+    /* Escreve o padrao no display (r4 ainda e o indice) */
+    call  set_hex_raw               /* escreve r5 no display r4 */
 
-    ldw   ra, 0(sp)
-    addi  sp, sp, 4
-    ret
+    /* Epilogo: restaura o ra e devolve a pilha */
+    ldw   ra, 0(sp)                 /* recupera o endereco de retorno */
+    addi  sp, sp, 4                 /* libera o word da pilha */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * clear_hex
@@ -118,23 +128,26 @@ set_hex_digit:
  * rapido que apagar display por display.
  * ---------------------------------------------------------------------------- */
 clear_hex:
-    movia r8, HEX3_HEX0_BASE
-    stwio r0, 0(r8)
-    movia r8, HEX7_HEX4_BASE
-    stwio r0, 0(r8)
-    ret
+    movia r8, HEX3_HEX0_BASE        /* r8 = endereco de HEX3..HEX0 */
+    stwio r0, 0(r8)                 /* apaga HEX3..HEX0 */
+    movia r8, HEX7_HEX4_BASE        /* r8 = endereco de HEX7..HEX4 */
+    stwio r0, 0(r8)                 /* apaga HEX7..HEX4 */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * show_play
  * Tela do estado AGUARDANDO: HEX7..HEX4 apagados e "PLAY" em HEX3..HEX0.
  * ---------------------------------------------------------------------------- */
 show_play:
-    movia r8, HEX7_HEX4_BASE
-    stwio r0, 0(r8)
-    movia r8, HEX3_HEX0_BASE
-    movia r9, PADRAO_PLAY
-    stwio r9, 0(r8)
-    ret
+    /* Metade da esquerda apagada */
+    movia r8, HEX7_HEX4_BASE        /* r8 = endereco de HEX7..HEX4 */
+    stwio r0, 0(r8)                 /* apaga HEX7..HEX4 */
+
+    /* "PLAY" na metade da direita */
+    movia r8, HEX3_HEX0_BASE        /* r8 = endereco de HEX3..HEX0 */
+    movia r9, PADRAO_PLAY           /* r9 = padroes de P, L, A, Y juntos */
+    stwio r9, 0(r8)                 /* escreve PLAY em HEX3..HEX0 */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * show_game_over
@@ -143,36 +156,43 @@ show_play:
  * 9999 aparecem so os 4 digitos de baixo.
  * ---------------------------------------------------------------------------- */
 show_game_over:
-    subi  sp, sp, 4
-    stw   ra, 0(sp)
+    /* Prologo: vai chamar to_bcd, entao guarda o ra */
+    subi  sp, sp, 4                 /* reserva 1 word na pilha */
+    stw   ra, 0(sp)                 /* salva o endereco de retorno */
 
-    call  to_bcd                    /* r2 = pontos em BCD, 1 digito por nibble */
+    /* Converte os pontos para decimal (1 digito por nibble) */
+    call  to_bcd                    /* r2 = pontos (r4) em BCD */
 
-    movia r8, HEX7_HEX4_BASE
-    movia r9, PADRAO_GO
-    stwio r9, 0(r8)
+    /* "GO" na metade da esquerda */
+    movia r8, HEX7_HEX4_BASE        /* r8 = endereco de HEX7..HEX4 */
+    movia r9, PADRAO_GO             /* r9 = padroes de G, O e dois apagados */
+    stwio r9, 0(r8)                 /* escreve "GO  " em HEX7..HEX4 */
 
-    /* Converte os 4 nibbles de baixo em padroes e monta HEX3..HEX0 num word
-     * so (mesma ideia do LOOP_HEX do lab 5). */
-    movia r10, HEX7SEG_TABLE
-    mov   r11, r0                   /* word montado */
-    mov   r12, r0                   /* deslocamento: 0, 8, 16, 24 */
-    movi  r13, 4                    /* 4 displays */
+    /* Prepara a montagem dos 4 digitos (mesma ideia do LOOP_HEX do lab 5) */
+    movia r10, HEX7SEG_TABLE        /* r10 = endereco da tabela */
+    mov   r11, r0                   /* r11 = word montado, comeca zerado */
+    mov   r12, r0                   /* r12 = deslocamento do display atual (0) */
+    movi  r13, 4                    /* r13 = quantos digitos faltam (4) */
 
 .Lgo_digito:
-    andi  r9, r2, 0x0F              /* digito decimal atual */
-    add   r9, r10, r9
-    ldbu  r9, 0(r9)
-    sll   r9, r9, r12
-    or    r11, r11, r9
-    srli  r2, r2, 4                 /* proximo digito */
-    addi  r12, r12, 8               /* proximo display */
-    subi  r13, r13, 1
-    bne   r13, r0, .Lgo_digito
+    /* Converte o digito de baixo e encaixa no byte do display atual */
+    andi  r9, r2, 0x0F              /* r9 = digito decimal das unidades atuais */
+    add   r9, r10, r9               /* r9 = endereco da entrada do digito */
+    ldbu  r9, 0(r9)                 /* r9 = padrao de 7 segmentos do digito */
+    sll   r9, r9, r12               /* r9 = padrao na posicao do display */
+    or    r11, r11, r9              /* junta o padrao ao word montado */
 
-    movia r8, HEX3_HEX0_BASE
-    stwio r11, 0(r8)
+    /* Avanca para o proximo digito e o proximo display */
+    srli  r2, r2, 4                 /* traz o proximo digito para o nibble 0 */
+    addi  r12, r12, 8               /* proximo display: 8 bits a esquerda */
+    subi  r13, r13, 1               /* um digito a menos */
+    bne   r13, r0, .Lgo_digito      /* repete ate fazer os 4 */
 
-    ldw   ra, 0(sp)
-    addi  sp, sp, 4
-    ret
+    /* Escreve os 4 digitos de uma vez */
+    movia r8, HEX3_HEX0_BASE        /* r8 = endereco de HEX3..HEX0 */
+    stwio r11, 0(r8)                /* escreve os 4 digitos */
+
+    /* Epilogo */
+    ldw   ra, 0(sp)                 /* recupera o endereco de retorno */
+    addi  sp, sp, 4                 /* libera o word da pilha */
+    ret                             /* retorna */
