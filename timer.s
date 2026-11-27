@@ -13,20 +13,21 @@
  * Usam so r8-r9 e nao chamam ninguem: nao precisam de pilha.
  * ============================================================================ */
 
-.include "constants.s"
+.include "constants.s"                  /* traz endereco e bits do timer */
 
-.global timer_start
-.global timer_stop
-.global timer_resume
-.global next_period
+/* Rotinas visiveis para os outros arquivos */
+.global timer_start                     /* exporta timer_start */
+.global timer_stop                      /* exporta timer_stop */
+.global timer_resume                    /* exporta timer_resume */
+.global next_period                     /* exporta next_period */
 
 /* Controle com o timer contando: interrupcao no timeout (ITO) e recarga
  * automatica do periodo (CONT), para os passos ficarem regulares sem o
  * software precisar reiniciar o timer a cada tick. */
-.equ CTRL_RODANDO, TIMER_ITO | TIMER_CONT | TIMER_START
-.equ CTRL_PARADO,  TIMER_ITO | TIMER_CONT | TIMER_STOP
+.equ CTRL_RODANDO, TIMER_ITO | TIMER_CONT | TIMER_START   /* contando */
+.equ CTRL_PARADO,  TIMER_ITO | TIMER_CONT | TIMER_STOP    /* parado, mesma config */
 
-.text
+.text                                   /* monta na secao de codigo */
 
 /* ----------------------------------------------------------------------------
  * timer_start
@@ -35,19 +36,22 @@
  * configuracao anterior nao vire um tick falso logo apos o reinicio.
  * ---------------------------------------------------------------------------- */
 timer_start:
-    movia r8, TIMER_BASE
-    movi  r9, TIMER_STOP
-    stwio r9, TIMER_CTRL_REG(r8)
-    stwio r0, TIMER_STATUS_REG(r8)
+    /* Para o timer e descarta um timeout antigo */
+    movia r8, TIMER_BASE            /* r8 = endereco do timer */
+    movi  r9, TIMER_STOP            /* r9 = comando STOP */
+    stwio r9, TIMER_CTRL_REG(r8)    /* para o timer */
+    stwio r0, TIMER_STATUS_REG(r8)  /* limpa o bit TO */
 
-    andi  r9, r4, 0xFFFF            /* o periodo e escrito em duas metades */
-    stwio r9, TIMER_PERIODL_REG(r8)
-    srli  r9, r4, 16
-    stwio r9, TIMER_PERIODH_REG(r8)
+    /* Escreve o periodo novo (o registrador tem 16 bits por metade) */
+    andi  r9, r4, 0xFFFF            /* r9 = 16 bits de baixo do periodo */
+    stwio r9, TIMER_PERIODL_REG(r8) /* grava a metade baixa */
+    srli  r9, r4, 16                /* r9 = 16 bits de cima do periodo */
+    stwio r9, TIMER_PERIODH_REG(r8) /* grava a metade alta */
 
-    movi  r9, CTRL_RODANDO
-    stwio r9, TIMER_CTRL_REG(r8)
-    ret
+    /* Liga o timer com interrupcao e recarga automatica */
+    movi  r9, CTRL_RODANDO          /* r9 = ITO | CONT | START */
+    stwio r9, TIMER_CTRL_REG(r8)    /* comeca a contar */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * timer_stop
@@ -58,10 +62,10 @@ timer_start:
  * despausar (decisao do grupo).
  * ---------------------------------------------------------------------------- */
 timer_stop:
-    movia r8, TIMER_BASE
-    movi  r9, CTRL_PARADO
-    stwio r9, TIMER_CTRL_REG(r8)
-    ret
+    movia r8, TIMER_BASE            /* r8 = endereco do timer */
+    movi  r9, CTRL_PARADO           /* r9 = ITO | CONT | STOP */
+    stwio r9, TIMER_CTRL_REG(r8)    /* congela o contador */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * timer_resume
@@ -69,10 +73,10 @@ timer_stop:
  * de um periodo inteiro.
  * ---------------------------------------------------------------------------- */
 timer_resume:
-    movia r8, TIMER_BASE
-    movi  r9, CTRL_RODANDO
-    stwio r9, TIMER_CTRL_REG(r8)
-    ret
+    movia r8, TIMER_BASE            /* r8 = endereco do timer */
+    movi  r9, CTRL_RODANDO          /* r9 = ITO | CONT | START */
+    stwio r9, TIMER_CTRL_REG(r8)    /* volta a contar de onde parou */
+    ret                             /* retorna */
 
 /* ----------------------------------------------------------------------------
  * next_period
@@ -82,6 +86,6 @@ timer_resume:
  * ciclos p >> 4 vale 0 e o periodo para de cair sozinho.
  * ---------------------------------------------------------------------------- */
 next_period:
-    srli  r2, r4, ACEL_SHIFT
-    sub   r2, r4, r2
-    ret
+    srli  r2, r4, ACEL_SHIFT        /* r2 = periodo / 16 */
+    sub   r2, r4, r2                /* r2 = periodo - periodo / 16 */
+    ret                             /* retorna com o periodo novo em r2 */

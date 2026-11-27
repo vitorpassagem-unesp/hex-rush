@@ -274,6 +274,12 @@ Observações:
 
 A do Nios II: argumentos em r4–r7, retorno em r2 (e r3), r8–r15 livres para a sub-rotina chamada (o chamador perde esses valores a cada `call`), r16–r23 **preservados**: quem usar precisa salvar na pilha e restaurar antes do `ret`. `ra` é salvo na pilha por toda rotina que faz `call`.
 
+### Comentários no código
+
+1. **Toda linha de instrução** tem um comentário dizendo exatamente o que ela faz, no contexto do jogo (ex.: `srli r9, r9, 14  /* traz SW[17:14] para os bits 3:0 */`).
+2. **Todo trecho pequeno** (3 a 8 linhas que fazem uma coisa só) começa com um comentário de bloco dizendo o que o trecho faz (ex.: `/* HEX0 mostra SW[17:14] a cada volta */`).
+3. **Toda rotina** tem um cabeçalho com entradas, saídas e o porquê das escolhas que não são óbvias (seção 5 do enunciado).
+
 ### Onde ficam as variáveis do jogo
 
 **Flags na memória, o resto em registradores fixos.** A lista de alvos é constante e fica em `targets.s`.
